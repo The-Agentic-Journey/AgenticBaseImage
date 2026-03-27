@@ -22,19 +22,48 @@ RUN set -eux; \
         gnupg \
         sudo \
         openssh-client \
+        openssh-server \
         # Firecracker / Docker requirements
         docker.io \
         docker-compose \
         iptables \
+        # Networking tools
+        iproute2 \
+        iputils-ping \
+        mosh \
+        # Entropy daemon for Firecracker VMs
+        haveged \
+        # Locale support
+        locales \
         # Dev tools
         tmux \
         jq \
         unzip \
         procps \
+        vim \
+        wget \
+        # Python
+        python3 \
+        python3-pip \
+        python3-venv \
         # Node.js (for Playwright)
         nodejs \
         npm \
     ; \
+    \
+    # -- SSH server configuration -----------------------------------------------
+    sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config; \
+    sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config; \
+    sed -i 's/^#\?ListenAddress.*/ListenAddress 0.0.0.0/' /etc/ssh/sshd_config; \
+    grep -q "^ListenAddress" /etc/ssh/sshd_config || echo "ListenAddress 0.0.0.0" >> /etc/ssh/sshd_config; \
+    rm -f /etc/systemd/system/sockets.target.wants/ssh.socket; \
+    ln -sf /lib/systemd/system/ssh.service /etc/systemd/system/multi-user.target.wants/ssh.service; \
+    ssh-keygen -A; \
+    \
+    # -- Locale (en_US.UTF-8) ---------------------------------------------------
+    sed -i 's/^# *en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen; \
+    locale-gen; \
+    echo 'LANG=en_US.UTF-8' > /etc/default/locale; \
     \
     # -- iptables: switch to legacy backend -----------------------------------
     # Firecracker kernels do not support nftables
@@ -48,6 +77,14 @@ RUN set -eux; \
     ln -sf /lib/systemd/system/docker.service \
         /etc/systemd/system/multi-user.target.wants/docker.service; \
     \
+    # -- systemd: enable haveged for entropy ------------------------------------
+    ln -sf /lib/systemd/system/haveged.service \
+        /etc/systemd/system/multi-user.target.wants/haveged.service; \
+    \
+    # -- systemd: enable serial console -----------------------------------------
+    mkdir -p /etc/systemd/system/getty.target.wants; \
+    ln -sf /lib/systemd/system/serial-getty@.service \
+        /etc/systemd/system/getty.target.wants/serial-getty@ttyS0.service; \
     \
     # -- Create default user with docker group access -------------------------
     useradd -m -s /bin/bash -G docker,sudo user; \
@@ -81,6 +118,16 @@ RUN set -eux; \
         echo '# Aliases'; \
         echo 'alias cld="claude --dangerously-skip-permissions"'; \
     } | tee -a /home/user/.bashrc >> /etc/skel/.bashrc; \
+    \
+    # -- Claude Code CLI --------------------------------------------------------
+    { \
+        echo '#!/bin/bash'; \
+        echo 'set -eux'; \
+        echo 'curl -fsSL https://claude.ai/install.sh | bash'; \
+        echo 'echo '\''export PATH="$HOME/.local/bin:$PATH"'\'' >> ~/.bashrc'; \
+    } > /tmp/install-claude.sh; \
+    su - user -c "bash /tmp/install-claude.sh"; \
+    rm -f /tmp/install-claude.sh; \
     \
     # -- Fix ownership of user home directory ---------------------------------
     chown -R user:user /home/user; \
