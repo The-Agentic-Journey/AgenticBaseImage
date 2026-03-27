@@ -156,15 +156,43 @@ RUN set -eux; \
     # -- Claude Code statusline config ------------------------------------------
     mkdir -p /home/user/.claude; \
     { \
-        echo '#!/bin/bash'; \
+        echo '#!/usr/bin/env bash'; \
         echo 'input=$(cat)'; \
-        echo 'MODEL=$(echo "$input" | jq -r '\''.model.display_name // "Claude"'\'')'; \
-        echo 'PCT=$(echo "$input" | jq -r '\''.context_window.used_percentage // 0'\'' | cut -d. -f1)'; \
-        echo 'COST=$(echo "$input" | jq -r '\''.cost.total_cost_usd // 0'\'')'; \
-        echo 'echo "[$MODEL] ctx:${PCT}% \$$COST"'; \
-    } > /home/user/.claude/statusline.sh; \
-    chmod +x /home/user/.claude/statusline.sh; \
-    echo '{"statusLine":{"type":"command","command":"~/.claude/statusline.sh","padding":2}}' \
+        echo ''; \
+        echo 'cwd=$(echo "$input" | jq -r '\''.workspace.current_dir // .cwd // empty'\'')'; \
+        echo 'model=$(echo "$input" | jq -r '\''.model.display_name // empty'\'')'; \
+        echo 'used=$(echo "$input" | jq -r '\''.context_window.used_percentage // empty'\'')'; \
+        echo ''; \
+        echo '# Shorten home directory to ~'; \
+        echo 'home="$HOME"'; \
+        echo 'short_cwd="${cwd/#$home/\~}"'; \
+        echo ''; \
+        echo '# Get git branch, skip optional locks'; \
+        echo 'git_branch=""'; \
+        echo 'if git -C "$cwd" --no-optional-locks rev-parse --is-inside-work-tree > /dev/null 2>&1; then'; \
+        echo '  git_branch=$(git -C "$cwd" --no-optional-locks symbolic-ref --short HEAD 2>/dev/null)'; \
+        echo 'fi'; \
+        echo ''; \
+        echo '# Build status line'; \
+        echo 'parts="$short_cwd"'; \
+        echo ''; \
+        echo 'if [ -n "$git_branch" ]; then'; \
+        echo '  parts="$parts  $git_branch"'; \
+        echo 'fi'; \
+        echo ''; \
+        echo 'if [ -n "$used" ]; then'; \
+        echo '  printf -v used_fmt "%.0f" "$used" 2>/dev/null || used_fmt="$used"'; \
+        echo '  parts="$parts  ctx:${used_fmt}%"'; \
+        echo 'fi'; \
+        echo ''; \
+        echo 'if [ -n "$model" ]; then'; \
+        echo '  parts="$parts  $model"'; \
+        echo 'fi'; \
+        echo ''; \
+        echo 'printf '\''%s'\'' "$parts"'; \
+    } > /home/user/.claude/statusline-command.sh; \
+    chmod +x /home/user/.claude/statusline-command.sh; \
+    echo '{"statusLine":{"type":"command","command":"~/.claude/statusline-command.sh","padding":2}}' \
         > /home/user/.claude/settings.json; \
     cp -r /home/user/.claude /etc/skel/.claude; \
     \
