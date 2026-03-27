@@ -109,6 +109,65 @@ RUN set -eux; \
     cp -r /home/user/.ssh   /etc/skel/.ssh; \
     mkdir -p /etc/skel/.npm-global; \
     \
+    # -- tmux config -----------------------------------------------------------
+    { \
+        echo '# Use C-a as prefix (like screen)'; \
+        echo 'set -g prefix C-a'; \
+        echo 'unbind C-b'; \
+        echo 'bind C-a send-prefix'; \
+        echo ''; \
+        echo '# Enable mouse support'; \
+        echo 'set -g mouse on'; \
+        echo ''; \
+        echo '# Start windows and panes at 1, not 0'; \
+        echo 'set -g base-index 1'; \
+        echo 'setw -g pane-base-index 1'; \
+        echo ''; \
+        echo '# Renumber windows when one is closed'; \
+        echo 'set -g renumber-windows on'; \
+        echo ''; \
+        echo '# Enable true color support'; \
+        echo 'set -g default-terminal "tmux-256color"'; \
+        echo 'set -ag terminal-overrides ",xterm-256color:RGB"'; \
+        echo ''; \
+        echo 'set -sg escape-time 0'; \
+        echo ''; \
+        echo '# Reload config with r'; \
+        echo 'bind r source-file ~/.tmux.conf \; display "Config reloaded!"'; \
+        echo ''; \
+        echo '# Switch panes using Alt-arrow without prefix'; \
+        echo 'bind -n M-Left select-pane -L'; \
+        echo 'bind -n M-Right select-pane -R'; \
+        echo 'bind -n M-Up select-pane -U'; \
+        echo 'bind -n M-Down select-pane -D'; \
+        echo ''; \
+        echo '# Increase scrollback buffer size'; \
+        echo 'set -g history-limit 10000000'; \
+        echo ''; \
+        echo '# Status bar styling'; \
+        echo 'set -g status-bg colour234'; \
+        echo 'set -g status-fg colour137'; \
+        echo "set -g status-left '#[fg=colour243][#(hostname)]  #[default]'"; \
+        echo "set -g status-right '#[fg=colour233,bg=colour241,bold] %d/%m #[fg=colour233,bg=colour245,bold] %H:%M:%S '"; \
+        echo 'set -g status-right-length 70'; \
+        echo 'set -g status-left-length 30'; \
+    } | tee /home/user/.tmux.conf > /etc/skel/.tmux.conf; \
+    \
+    # -- Claude Code statusline config ------------------------------------------
+    mkdir -p /home/user/.claude; \
+    { \
+        echo '#!/bin/bash'; \
+        echo 'input=$(cat)'; \
+        echo 'MODEL=$(echo "$input" | jq -r '\''.model.display_name // "Claude"'\'')'; \
+        echo 'PCT=$(echo "$input" | jq -r '\''.context_window.used_percentage // 0'\'' | cut -d. -f1)'; \
+        echo 'COST=$(echo "$input" | jq -r '\''.cost.total_cost_usd // 0'\'')'; \
+        echo 'echo "[$MODEL] ctx:${PCT}% \$$COST"'; \
+    } > /home/user/.claude/statusline.sh; \
+    chmod +x /home/user/.claude/statusline.sh; \
+    echo '{"statusLine":{"type":"command","command":"~/.claude/statusline.sh","padding":2}}' \
+        > /home/user/.claude/settings.json; \
+    cp -r /home/user/.claude /etc/skel/.claude; \
+    \
     # -- bashrc defaults ------------------------------------------------------
     { \
         echo ''; \
