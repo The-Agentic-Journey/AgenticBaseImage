@@ -194,7 +194,9 @@ RUN set -eux; \
     chmod +x /home/user/.claude/statusline-command.sh; \
     echo '{"statusLine":{"type":"command","command":"~/.claude/statusline-command.sh","padding":2}}' \
         > /home/user/.claude/settings.json; \
+    echo '{}' > /home/user/.claude.json; \
     cp -r /home/user/.claude /etc/skel/.claude; \
+    cp /home/user/.claude.json /etc/skel/.claude.json; \
     \
     # -- bashrc defaults ------------------------------------------------------
     { \
