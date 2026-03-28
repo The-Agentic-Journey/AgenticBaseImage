@@ -211,6 +211,10 @@ RUN set -eux; \
         echo 'alias cld="claude --dangerously-skip-permissions"'; \
     } | tee -a /home/user/.bashrc >> /etc/skel/.bashrc; \
     \
+    # -- Fix ownership of user home directory ---------------------------------
+    # Must happen before su - user, so the user can write to ~/.claude etc.
+    chown -R user:user /home/user; \
+    \
     # -- Claude Code CLI --------------------------------------------------------
     { \
         echo '#!/bin/bash'; \
@@ -220,9 +224,6 @@ RUN set -eux; \
     } > /tmp/install-claude.sh; \
     su - user -c "bash /tmp/install-claude.sh"; \
     rm -f /tmp/install-claude.sh; \
-    \
-    # -- Fix ownership of user home directory ---------------------------------
-    chown -R user:user /home/user; \
     \
     # -- Cleanup to minimise image size ---------------------------------------
     apt-get clean; \
