@@ -21,6 +21,9 @@ RUN set -eux; \
         git \
         gnupg \
         sudo \
+        systemd \
+        systemd-sysv \
+        dbus \
         openssh-client \
         openssh-server \
         # Firecracker / Docker requirements
