@@ -225,6 +225,24 @@ RUN set -eux; \
     su - user -c "bash /tmp/install-claude.sh"; \
     rm -f /tmp/install-claude.sh; \
     \
+    # -- 1Password CLI ----------------------------------------------------------
+    arch="$(dpkg --print-architecture)"; \
+    curl -sS https://downloads.1password.com/linux/keys/1password.asc \
+        | gpg --dearmor --output /usr/share/keyrings/1password-archive-keyring.gpg; \
+    echo "deb [arch=${arch} signed-by=/usr/share/keyrings/1password-archive-keyring.gpg] https://downloads.1password.com/linux/debian/${arch} stable main" \
+        > /etc/apt/sources.list.d/1password.list; \
+    mkdir -p /etc/debsig/policies/AC2D62742012EA22/; \
+    curl -sS https://downloads.1password.com/linux/debian/debsig/1password.pol \
+        > /etc/debsig/policies/AC2D62742012EA22/1password.pol; \
+    mkdir -p /usr/share/debsig/keyrings/AC2D62742012EA22; \
+    curl -sS https://downloads.1password.com/linux/keys/1password.asc \
+        | gpg --dearmor --output /usr/share/debsig/keyrings/AC2D62742012EA22/debsig.gpg; \
+    apt-get update -qq; \
+    apt-get install -y -qq --no-install-recommends 1password-cli; \
+    \
+    # -- flyctl -----------------------------------------------------------------
+    curl -fsSL https://fly.io/install.sh | FLYCTL_INSTALL=/usr/local sh; \
+    \
     # -- Cleanup to minimise image size ---------------------------------------
     apt-get clean; \
     rm -rf \
