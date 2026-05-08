@@ -9,6 +9,17 @@
 
 FROM debian:bookworm-slim AS builder
 
+# Pinned third-party versions. Bump these to upgrade.
+ARG NVM_VERSION=v0.40.1
+ARG NODE_VERSION=v24.15.0
+ARG PLAYWRIGHT_VERSION=1.59.1
+
+# Shared system-wide Playwright browser cache. Set in both stages so it is in
+# scope for `npx playwright install` during the build AND for any user running
+# Playwright at runtime — without this, browsers go to /root/.cache and the
+# `user` account silently re-downloads them on first use.
+ENV PLAYWRIGHT_BROWSERS_PATH=/usr/local/ms-playwright
+
 # Config files live in ./config/ (non-hidden filenames) and are copied into a
 # scratch staging dir, then `cp`'d to their final destinations inside the RUN
 # block. The trailing `rm -rf /tmp/*` cleanup deletes the staging dir, so the
@@ -65,6 +76,7 @@ RUN set -eux; \
         python3 \
         python3-pip \
         python3-venv \
+        pipx \
     ; \
     \
     # -- SSH server configuration -----------------------------------------------
@@ -109,27 +121,31 @@ RUN set -eux; \
     # -- npm global prefix (non-root installs) --------------------------------
     mkdir -p /home/user/.npm-global; \
     \
-    # -- nvm + Node.js LTS (instead of the distro's older nodejs/npm) --------
+    # -- nvm + Node.js (instead of the distro's older nodejs/npm) ------------
     # nvm installs to $NVM_DIR; we symlink node/npm/npx into /usr/local/bin so
     # they are on PATH for non-login shells (and for the build steps below).
     # Interactive shells additionally source nvm via /etc/skel/.bashrc, which
     # exposes the `nvm` command itself for switching versions.
     export NVM_DIR=/usr/local/nvm; \
     mkdir -p "$NVM_DIR"; \
-    curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh \
+    curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh" \
         | PROFILE=/dev/null bash; \
     set +u; . "$NVM_DIR/nvm.sh"; set -u; \
-    nvm install --lts; \
-    nvm alias default 'lts/*'; \
-    node_bin="$NVM_DIR/versions/node/$(nvm version default)/bin"; \
+    nvm install "${NODE_VERSION}"; \
+    nvm alias default "${NODE_VERSION}"; \
+    node_bin="$NVM_DIR/versions/node/${NODE_VERSION}/bin"; \
     ln -sf "$node_bin/node" /usr/local/bin/node; \
     ln -sf "$node_bin/npm"  /usr/local/bin/npm; \
     ln -sf "$node_bin/npx"  /usr/local/bin/npx; \
     \
     # -- Playwright (global install + Chromium) -------------------------------
-    npm install -g playwright; \
+    # Browsers go under $PLAYWRIGHT_BROWSERS_PATH (set above) so they are
+    # readable by every account, not just root.
+    mkdir -p "$PLAYWRIGHT_BROWSERS_PATH"; \
+    npm install -g "playwright@${PLAYWRIGHT_VERSION}"; \
     npx playwright install-deps chromium; \
     npx playwright install chromium; \
+    chmod -R a+rX "$PLAYWRIGHT_BROWSERS_PATH"; \
     \
     # -- SSH known hosts for common forges ------------------------------------
     mkdir -p /home/user/.ssh; \
@@ -210,3 +226,4 @@ COPY --from=builder / /
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ENV PLAYWRIGHT_BROWSERS_PATH=/usr/local/ms-playwright
