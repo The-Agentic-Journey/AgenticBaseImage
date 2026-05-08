@@ -65,9 +65,6 @@ RUN set -eux; \
         python3 \
         python3-pip \
         python3-venv \
-        # Node.js (for Playwright)
-        nodejs \
-        npm \
     ; \
     \
     # -- SSH server configuration -----------------------------------------------
@@ -111,6 +108,23 @@ RUN set -eux; \
     \
     # -- npm global prefix (non-root installs) --------------------------------
     mkdir -p /home/user/.npm-global; \
+    \
+    # -- nvm + Node.js LTS (instead of the distro's older nodejs/npm) --------
+    # nvm installs to $NVM_DIR; we symlink node/npm/npx into /usr/local/bin so
+    # they are on PATH for non-login shells (and for the build steps below).
+    # Interactive shells additionally source nvm via /etc/skel/.bashrc, which
+    # exposes the `nvm` command itself for switching versions.
+    export NVM_DIR=/usr/local/nvm; \
+    mkdir -p "$NVM_DIR"; \
+    curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh \
+        | PROFILE=/dev/null bash; \
+    set +u; . "$NVM_DIR/nvm.sh"; set -u; \
+    nvm install --lts; \
+    nvm alias default 'lts/*'; \
+    node_bin="$NVM_DIR/versions/node/$(nvm version default)/bin"; \
+    ln -sf "$node_bin/node" /usr/local/bin/node; \
+    ln -sf "$node_bin/npm"  /usr/local/bin/npm; \
+    ln -sf "$node_bin/npx"  /usr/local/bin/npx; \
     \
     # -- Playwright (global install + Chromium) -------------------------------
     npm install -g playwright; \
