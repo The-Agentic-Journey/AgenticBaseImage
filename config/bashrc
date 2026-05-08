@@ -3,4 +3,4 @@
 export PATH="$HOME/.npm-global/bin:$PATH"
 
 # Aliases
-alias cld="claude --dangerously-skip-permissions"
+alias cld="claude --dangerously-skip-permissions --model opus"
