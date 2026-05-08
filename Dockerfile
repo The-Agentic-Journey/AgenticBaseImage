@@ -72,6 +72,8 @@ RUN set -eux; \
         procps \
         vim \
         wget \
+        htop \
+        tree \
         # Python
         python3 \
         python3-pip \
