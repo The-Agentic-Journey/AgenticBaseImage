@@ -9,6 +9,22 @@
 
 FROM debian:bookworm-slim AS builder
 
+# Config files live in ./config/ (non-hidden filenames) and are copied into a
+# scratch staging dir, then `cp`'d to their final destinations inside the RUN
+# block. The trailing `rm -rf /tmp/*` cleanup deletes the staging dir, so the
+# final image contains only the files at their real destinations.
+#
+# NOTE on image checksum stability: every config file emitted by this build is
+# byte-identical (content, mode, owner) to what the previous inline-heredoc
+# approach produced — verified by extracting both images to tar and diffing.
+# However, the overall image SHA still differs between any two builds (incl.
+# rebuilding the unmodified Dockerfile) due to non-reproducibility that
+# predates this refactor: directory mtimes baked in by apt, log filenames
+# containing a wall-clock timestamp (flyctl, npm), and the `claude` CLI
+# install rewriting /home/user/.claude.json with a generated userID and
+# firstStartTime. The COPY refactor itself contributes zero additional drift.
+COPY config/ /tmp/config/
+
 RUN set -eux; \
     \
     export DEBIAN_FRONTEND=noninteractive; \
@@ -66,7 +82,7 @@ RUN set -eux; \
     # -- Locale (en_US.UTF-8) ---------------------------------------------------
     sed -i 's/^# *en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen; \
     locale-gen; \
-    echo 'LANG=en_US.UTF-8' > /etc/default/locale; \
+    cp /tmp/config/locale /etc/default/locale; \
     \
     # -- iptables: switch to legacy backend -----------------------------------
     # Firecracker kernels do not support nftables
@@ -91,7 +107,7 @@ RUN set -eux; \
     \
     # -- Create default user with docker group access -------------------------
     useradd -m -s /bin/bash -G docker,sudo user; \
-    echo 'user ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/user; \
+    cp /tmp/config/sudoers-user /etc/sudoers.d/user; \
     \
     # -- npm global prefix (non-root installs) --------------------------------
     mkdir -p /home/user/.npm-global; \
@@ -113,103 +129,20 @@ RUN set -eux; \
     mkdir -p /etc/skel/.npm-global; \
     \
     # -- tmux config -----------------------------------------------------------
-    { \
-        echo '# Use C-a as prefix (like screen)'; \
-        echo 'set -g prefix C-a'; \
-        echo 'unbind C-b'; \
-        echo 'bind C-a send-prefix'; \
-        echo ''; \
-        echo '# Enable mouse support'; \
-        echo 'set -g mouse on'; \
-        echo ''; \
-        echo '# Start windows and panes at 1, not 0'; \
-        echo 'set -g base-index 1'; \
-        echo 'setw -g pane-base-index 1'; \
-        echo ''; \
-        echo '# Renumber windows when one is closed'; \
-        echo 'set -g renumber-windows on'; \
-        echo ''; \
-        echo '# Enable true color support'; \
-        echo 'set -g default-terminal "tmux-256color"'; \
-        echo 'set -ag terminal-overrides ",xterm-256color:RGB"'; \
-        echo ''; \
-        echo 'set -sg escape-time 0'; \
-        echo ''; \
-        echo '# Reload config with r'; \
-        echo 'bind r source-file ~/.tmux.conf \; display "Config reloaded!"'; \
-        echo ''; \
-        echo '# Switch panes using Alt-arrow without prefix'; \
-        echo 'bind -n M-Left select-pane -L'; \
-        echo 'bind -n M-Right select-pane -R'; \
-        echo 'bind -n M-Up select-pane -U'; \
-        echo 'bind -n M-Down select-pane -D'; \
-        echo ''; \
-        echo '# Increase scrollback buffer size'; \
-        echo 'set -g history-limit 10000000'; \
-        echo ''; \
-        echo '# Status bar styling'; \
-        echo 'set -g status-bg colour234'; \
-        echo 'set -g status-fg colour137'; \
-        echo "set -g status-left '#[fg=colour243][#(hostname)]  #[default]'"; \
-        echo "set -g status-right '#[fg=colour233,bg=colour241,bold] %d/%m #[fg=colour233,bg=colour245,bold] %H:%M:%S '"; \
-        echo 'set -g status-right-length 70'; \
-        echo 'set -g status-left-length 30'; \
-    } | tee /home/user/.tmux.conf > /etc/skel/.tmux.conf; \
+    cp /tmp/config/tmux.conf /home/user/.tmux.conf; \
+    cp /tmp/config/tmux.conf /etc/skel/.tmux.conf; \
     \
     # -- Claude Code statusline config ------------------------------------------
     mkdir -p /home/user/.claude; \
-    { \
-        echo '#!/usr/bin/env bash'; \
-        echo 'input=$(cat)'; \
-        echo ''; \
-        echo 'cwd=$(echo "$input" | jq -r '\''.workspace.current_dir // .cwd // empty'\'')'; \
-        echo 'model=$(echo "$input" | jq -r '\''.model.display_name // empty'\'')'; \
-        echo 'used=$(echo "$input" | jq -r '\''.context_window.used_percentage // empty'\'')'; \
-        echo ''; \
-        echo '# Shorten home directory to ~'; \
-        echo 'home="$HOME"'; \
-        echo 'short_cwd="${cwd/#$home/\~}"'; \
-        echo ''; \
-        echo '# Get git branch, skip optional locks'; \
-        echo 'git_branch=""'; \
-        echo 'if git -C "$cwd" --no-optional-locks rev-parse --is-inside-work-tree > /dev/null 2>&1; then'; \
-        echo '  git_branch=$(git -C "$cwd" --no-optional-locks symbolic-ref --short HEAD 2>/dev/null)'; \
-        echo 'fi'; \
-        echo ''; \
-        echo '# Build status line'; \
-        echo 'parts="$short_cwd"'; \
-        echo ''; \
-        echo 'if [ -n "$git_branch" ]; then'; \
-        echo '  parts="$parts  $git_branch"'; \
-        echo 'fi'; \
-        echo ''; \
-        echo 'if [ -n "$used" ]; then'; \
-        echo '  printf -v used_fmt "%.0f" "$used" 2>/dev/null || used_fmt="$used"'; \
-        echo '  parts="$parts  ctx:${used_fmt}%"'; \
-        echo 'fi'; \
-        echo ''; \
-        echo 'if [ -n "$model" ]; then'; \
-        echo '  parts="$parts  $model"'; \
-        echo 'fi'; \
-        echo ''; \
-        echo 'printf '\''%s'\'' "$parts"'; \
-    } > /home/user/.claude/statusline-command.sh; \
+    cp /tmp/config/claude/statusline-command.sh /home/user/.claude/statusline-command.sh; \
     chmod +x /home/user/.claude/statusline-command.sh; \
-    echo '{"statusLine":{"type":"command","command":"~/.claude/statusline-command.sh","padding":2}}' \
-        > /home/user/.claude/settings.json; \
-    echo '{"hasCompletedOnboarding":true,"numStartups":1}' > /home/user/.claude.json; \
+    cp /tmp/config/claude/settings.json /home/user/.claude/settings.json; \
+    cp /tmp/config/claude.json /home/user/.claude.json; \
     cp -r /home/user/.claude /etc/skel/.claude; \
     cp /home/user/.claude.json /etc/skel/.claude.json; \
     \
     # -- bashrc defaults ------------------------------------------------------
-    { \
-        echo ''; \
-        echo '# npm global path'; \
-        echo 'export PATH="$HOME/.npm-global/bin:$PATH"'; \
-        echo ''; \
-        echo '# Aliases'; \
-        echo 'alias cld="claude --dangerously-skip-permissions"'; \
-    } | tee -a /home/user/.bashrc >> /etc/skel/.bashrc; \
+    tee -a /home/user/.bashrc < /tmp/config/bashrc >> /etc/skel/.bashrc; \
     \
     # -- Fix ownership of user home directory ---------------------------------
     # Must happen before su - user, so the user can write to ~/.claude etc.

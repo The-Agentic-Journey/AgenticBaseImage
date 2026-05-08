@@ -1,0 +1,6 @@
+
+# npm global path
+export PATH="$HOME/.npm-global/bin:$PATH"
+
+# Aliases
+alias cld="claude --dangerously-skip-permissions"
