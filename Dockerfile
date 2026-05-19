@@ -120,6 +120,10 @@ RUN set -eux; \
     useradd -m -s /bin/bash -G docker,sudo user; \
     cp /tmp/config/sudoers-user /etc/sudoers.d/user; \
     \
+    # -- /workspace: default working directory owned by the dev user ----------
+    mkdir -p /workspace; \
+    chown user:user /workspace; \
+    \
     # -- npm global prefix (non-root installs) --------------------------------
     mkdir -p /home/user/.npm-global; \
     \
@@ -186,9 +190,28 @@ RUN set -eux; \
         echo 'set -eux'; \
         echo 'curl -fsSL https://claude.ai/install.sh | bash'; \
         echo 'echo '\''export PATH="$HOME/.local/bin:$PATH"'\'' >> ~/.bashrc'; \
+        echo 'export PATH="$HOME/.local/bin:$PATH"'; \
+        # Add the dev-workflow marketplace and install the bundled `dev`
+        # plugin. The CLI writes extraKnownMarketplaces + enabledPlugins into
+        # ~/.claude/settings.json. There is no CLI flag for autoUpdate, so we
+        # patch it in afterwards with jq — this makes Claude refresh the
+        # marketplace and plugin on every launch.
+        echo 'claude plugin marketplace add The-Agentic-Journey/claude-dev-workflow'; \
+        echo 'claude plugin install dev@marketplace'; \
+        echo 'jq '\''.extraKnownMarketplaces.marketplace.autoUpdate = true'\'' \
+            ~/.claude/settings.json > ~/.claude/settings.json.tmp \
+            && mv ~/.claude/settings.json.tmp ~/.claude/settings.json'; \
     } > /tmp/install-claude.sh; \
     su - user -c "bash /tmp/install-claude.sh"; \
     rm -f /tmp/install-claude.sh; \
+    \
+    # -- Propagate Claude plugin state into /etc/skel -------------------------
+    # /etc/skel was populated earlier with the seed settings.json, before the
+    # CLI install. Refresh the plugin-relevant bits so any future user gets
+    # the same marketplace + plugin installed and auto-updating.
+    cp /home/user/.claude/settings.json /etc/skel/.claude/settings.json; \
+    rm -rf /etc/skel/.claude/plugins; \
+    cp -r /home/user/.claude/plugins /etc/skel/.claude/plugins; \
     \
     # -- 1Password CLI ----------------------------------------------------------
     arch="$(dpkg --print-architecture)"; \
