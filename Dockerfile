@@ -13,6 +13,7 @@ FROM debian:bookworm-slim AS builder
 ARG NVM_VERSION=v0.40.1
 ARG NODE_VERSION=v24.15.0
 ARG PLAYWRIGHT_VERSION=1.59.1
+ARG TERRAFORM_VERSION=1.15.5
 
 # Shared system-wide Playwright browser cache. Set in both stages so it is in
 # scope for `npx playwright install` during the build AND for any user running
@@ -230,6 +231,14 @@ RUN set -eux; \
     \
     # -- flyctl -----------------------------------------------------------------
     curl -fsSL https://fly.io/install.sh | FLYCTL_INSTALL=/usr/local sh; \
+    \
+    # -- Terraform --------------------------------------------------------------
+    tf_arch="$(dpkg --print-architecture)"; \
+    curl -fsSL -o /tmp/terraform.zip \
+        "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_${tf_arch}.zip"; \
+    unzip -q /tmp/terraform.zip -d /usr/local/bin; \
+    chmod +x /usr/local/bin/terraform; \
+    rm -f /tmp/terraform.zip; \
     \
     # -- Cleanup to minimise image size ---------------------------------------
     apt-get clean; \
