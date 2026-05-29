@@ -80,6 +80,12 @@ RUN set -eux; \
         python3-pip \
         python3-venv \
         pipx \
+        # Native addon build toolchain (make + gcc/g++ + headers). Required so
+        # node-gyp can compile native modules that ship no prebuilt binary for
+        # the installed Node version (e.g. better-sqlite3 on Node 24). Without
+        # this a fresh `npm install` fails with "not found: make". python3
+        # (above) is node-gyp's other prerequisite.
+        build-essential \
     ; \
     \
     # -- SSH server configuration -----------------------------------------------
